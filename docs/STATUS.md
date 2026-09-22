@@ -1,7 +1,7 @@
 # KUR3 Harness — status
 
-Updated: 2026-09-21 (PT)  
-Base revision: 973aaa5 (branch step1/w00-w05-offline-scaffold, local only)  
+Updated: 2026-09-22 (PT)  
+Base revision: branch `step2/w06-provider-adapter` (from main `79a6fef`)  
 Guide: `KUR3-Harness-Master-Build-Guide.md` v0.2
 
 | Task | Status | Owner/session | Base revision | Evidence | Next action |
@@ -11,9 +11,9 @@ Guide: `KUR3-Harness-Master-Build-Guide.md` v0.2
 | W02 | ready for review | Grok Bot Step 1 | same | Custom runtime provisional; Pi/Deep Agents **not** compared (ADR-0002) | Optional foundation spike |
 | W03 | ready for review | Grok Bot Step 1 | same | `RunStore` events + lease tests | Consider SQLite migration |
 | W04 | ready for review | Grok Bot Step 1 | same | path guard + patch conflict tests | Keep `run_command` disabled |
-| W05 | ready for review | Grok Bot Step 1 | same | offline loop + `demo:offline` | Start W06 only after Kevin review |
-| W06 | not started | Unassigned | — | None | First real provider behind mocks |
-| W07 | not started | Unassigned | — | vscode-extension stub only | Editor panel + bridge |
+| W05 | ready for review | Grok Bot Step 1 | same | offline loop + `demo:offline` | — |
+| W06 | ready for review | Grok Bot Step 2 Track A | step2/w06-provider-adapter | ADR-0005; contracts ModelProvider SoT; OpenAI-compatible mocked adapter + conformance; FakeProvider green | Kevin reviews W06 summary / handoff |
+| W07 | not started | Unassigned (Track B / separate branch) | — | vscode-extension stub only | Editor panel + bridge on separate branch |
 | W08 | not started | Unassigned | — | None | Isolated command worker |
 | W09 | not started | Unassigned | — | None | Recovery + budget hardening |
 | W10 | not started | Unassigned | — | None | Second provider + switching |
