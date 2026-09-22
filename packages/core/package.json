@@ -1,0 +1,29 @@
+{
+  "name": "@kur3/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test src/*.test.ts",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@kur3/contracts": "0.1.0",
+    "@kur3/policy": "0.1.0",
+    "@kur3/providers": "0.1.0",
+    "@kur3/storage": "0.1.0",
+    "@kur3/tools": "0.1.0",
+    "@kur3/worker": "0.1.0"
+  }
+}

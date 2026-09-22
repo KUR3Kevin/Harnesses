@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/providers" },
+    { "path": "packages/policy" },
+    { "path": "packages/tools" },
+    { "path": "packages/worker" },
+    { "path": "packages/storage" },
+    { "path": "packages/core" },
+    { "path": "apps/cli" }
+  ]
+}

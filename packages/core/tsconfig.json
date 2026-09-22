@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../policy"
+    },
+    {
+      "path": "../providers"
+    },
+    {
+      "path": "../storage"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../worker"
+    }
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ]
+}
