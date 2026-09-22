@@ -2,7 +2,7 @@ Task ID: W06 (first real provider adapter — mocked)
 Builder/model as reported by the interface: Grok Bot (executor subagent)
 Date: 2026-09-22 (America/Los_Angeles)
 Base commit or supplied source snapshot: 79a6fef32704036ca73a955e2b8ed5b50937a0e8 (main tip)
-Resulting commit or patch reference: (see STEP2-W06-CHANGE-SUMMARY after local commit) on branch step2/w06-provider-adapter (local only; not pushed)
+Resulting commit or patch reference: 299cfc61733ab45e3bbff8d85cf92552b1bcf79f on branch step2/w06-provider-adapter (local only; not pushed)
 
 Objective:
 Deliver first real provider surface (OpenAI-compatible Chat Completions streaming) behind injectable mock transport; conformance tests; ADR-0005; STATUS/handoff/summary. No live/paid API calls. Keep FakeProvider + demo:offline green. Track A / W06 only.
