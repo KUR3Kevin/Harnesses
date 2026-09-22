@@ -2,7 +2,7 @@ Task ID: W00–W05 (Step 1 scaffold)
 Builder/model as reported by the interface: Grok Bot (executor subagent)
 Date: 2026-09-21 (America/Los_Angeles)
 Base commit or supplied source snapshot: f569404 (docs/master-build-guide + README only)
-Resulting commit or patch reference: see git log after local Step 1 commit (not pushed)
+Resulting commit or patch reference: 973aaa52d49fc956078af47bc44e000bcee1a550 on branch step1/w00-w05-offline-scaffold (local only; not pushed)
 
 Objective:
 Deliver offline monorepo scaffold through W00–W05 with fake provider, durable store, policy/file tools, integrated loop, demo:offline, ADRs, STATUS, and truthful check evidence.
@@ -61,7 +61,7 @@ Known limitations:
 - Custom runtime not compared to Pi/Deep Agents
 
 Uncommitted or conflicting work:
-- Recorded at handoff write time; expect a local commit after docs finalize
+- None after local commit 973aaa5 (working tree clean at handoff update)
 
 Remaining tasks:
 - W06+ after Kevin review; address open questions in ADR-0004

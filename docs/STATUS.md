@@ -1,7 +1,7 @@
 # KUR3 Harness — status
 
 Updated: 2026-09-21 (PT)  
-Base revision: local Step 1 scaffold (see git log after commit)  
+Base revision: 973aaa5 (branch step1/w00-w05-offline-scaffold, local only)  
 Guide: `KUR3-Harness-Master-Build-Guide.md` v0.2
 
 | Task | Status | Owner/session | Base revision | Evidence | Next action |
