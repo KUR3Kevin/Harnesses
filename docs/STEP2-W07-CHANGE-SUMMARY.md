@@ -3,8 +3,8 @@
 Date: 2026-09-22 (PT)  
 Repo worktree: `/workspace/Harnesses/Harnesses-w07` (GitHub: KUR3Kevin/Harnesses)  
 Branch: `step2/w07-editor-integration` (from main `79a6fef`)  
-Feature commit: _(filled after commit)_  
-Branch tip: _(filled after commit)_  
+Feature commit: `6e0553848e4896e819ec975674dc2314aa33c68b`  
+Branch tip: `6e0553848e4896e819ec975674dc2314aa33c68b` (local only; not pushed).  
 Scope: Master Build Guide work package **W07 only** — editor integration (panel + bridge)  
 **Not pushed / not merged** to remote. Track A (W06 provider adapter) is out of scope on this branch — do not import or cherry-pick W06 OpenAI files.
 
@@ -70,12 +70,12 @@ npm run demo:extension-offline
 
 | Command | Result |
 | --- | --- |
-| `npm install` | _(filled)_ |
-| `npm run build` | _(filled)_ |
-| `npm run typecheck` | _(filled)_ |
-| `npm test` | _(filled)_ |
-| `npm run demo:offline` | _(filled)_ |
-| `npm run demo:extension-offline` | _(filled)_ |
+| `npm install` | **pass** — added `@types/vscode`; 0 vulnerabilities |
+| `npm run build` | **pass** (`tsc -b`) |
+| `npm run typecheck` | **pass** |
+| `npm test` | **pass** — contracts/core/policy/providers/storage/tools/worker + vscode host-client IPC + integration (offline + extension-bridge) |
+| `npm run demo:offline` | **pass** — `DEMO OK (offline)` |
+| `npm run demo:extension-offline` | **pass** — `DEMO EXTENSION-OFFLINE OK` |
 
 Environment: Linux x86_64, Node v20.19.2, npm 9.2.0.
 

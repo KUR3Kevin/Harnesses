@@ -2,7 +2,7 @@ Task ID: W07 (Step 2 Track B — editor integration)
 Builder/model as reported by the interface: Grok Bot (executor subagent)
 Date: 2026-09-22 (America/Los_Angeles)
 Base commit or supplied source snapshot: main `79a6fef`
-Resulting commit or patch reference: _(filled after local commit)_ on branch `step2/w07-editor-integration` (local only; not pushed)
+Resulting commit or patch reference: `6e0553848e4896e819ec975674dc2314aa33c68b` on branch `step2/w07-editor-integration` (local only; not pushed)
 
 Objective:
 Deliver Master Build Guide W07 only: VS Code panel/commands, versioned bridge to `@kur3/core`, FakeProvider offline demo, docs/ADR/STATUS — composing on main without W06.
@@ -25,7 +25,13 @@ Decisions and reasons:
 - See ADR-0006 (stdio IPC + in-process bridge core; no W06 coupling)
 
 Checks actually executed:
-- See docs/STEP2-W07-CHANGE-SUMMARY.md (filled after verify)
+- Command: npm install — success
+- Command: npm run build — success
+- Command: npm run typecheck — success
+- Command: npm test — success (unit + IPC + integration)
+- Command: npm run demo:offline — DEMO OK (offline)
+- Command: npm run demo:extension-offline — DEMO EXTENSION-OFFLINE OK
+Environment: Linux x86_64, Node v20.19.2, npm 9.2.0
 
 Checks not executed and why:
 - `npm run package:extension` / Marketplace publish — FLAG, not in W07 cut
