@@ -11,9 +11,10 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "test": "npm run test --workspaces --if-present && npm run test:integration",
-    "test:integration": "node --import tsx --test tests/integration/offline-demo.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts",
     "demo:offline": "npm run demo:offline -w @kur3/cli",
-    "clean": "tsc -b --clean && npm run clean --workspaces --if-present"
+    "clean": "tsc -b --clean && npm run clean --workspaces --if-present",
+    "demo:extension-offline": "npm run demo:extension-offline -w @kur3/vscode-extension"
   },
   "engines": {
     "node": ">=20"
