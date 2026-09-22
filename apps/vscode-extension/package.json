@@ -1,0 +1,26 @@
+{
+  "name": "kur3-harness",
+  "displayName": "KUR3 Harness",
+  "description": "Stub VS Code extension — not packaged yet (W07).",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kur3.hello",
+        "title": "KUR3: Hello (stub)"
+      }
+    ]
+  },
+  "scripts": {
+    "typecheck": "echo 'vscode-extension stub: no typecheck yet'",
+    "build": "echo 'vscode-extension stub: no build yet'",
+    "test": "echo 'vscode-extension stub: no tests yet'"
+  }
+}

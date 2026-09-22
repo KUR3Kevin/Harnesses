@@ -1,0 +1,20 @@
+{
+  "name": "@kur3/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "kur3": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo:offline": "tsx src/demo-offline.ts",
+    "test": "node -e \"process.exit(0)\"",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@kur3/core": "0.1.0",
+    "@kur3/providers": "0.1.0"
+  }
+}

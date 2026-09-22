@@ -1,0 +1,26 @@
+{
+  "name": "kur3-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KUR3 Harness \u2014 offline-first AI coding harness scaffold",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test": "npm run test --workspaces --if-present && npm run test:integration",
+    "test:integration": "node --import tsx --test tests/integration/offline-demo.test.ts",
+    "demo:offline": "npm run demo:offline -w @kur3/cli",
+    "clean": "tsc -b --clean && npm run clean --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
