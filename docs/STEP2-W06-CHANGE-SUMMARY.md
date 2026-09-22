@@ -3,7 +3,7 @@
 Date: 2026-09-22 (PT)  
 Repo: `/workspace/Harnesses` (GitHub: KUR3Kevin/Harnesses)  
 Branch: `step2/w06-provider-adapter` (from main `79a6fef`)  
-Commits: `299cfc61733ab45e3bbff8d85cf92552b1bcf79f` (feature), `ad0619cb76da9ec58d2541504920aee756885ebe` (hash record) — local only  
+Commits: `299cfc61733ab45e3bbff8d85cf92552b1bcf79f` (feature), `ad0619cb76da9ec58d2541504920aee756885ebe` (hash record) — local only; tip `48d5fe20f0ba73cd785ea743a14009453d6b4ce2`  
 Scope: Master Build Guide work package **W06 only** — first real provider behind mocks  
 **Not pushed / not merged** to remote. Track B (W07 / Lim3) is out of scope on this branch.
 
