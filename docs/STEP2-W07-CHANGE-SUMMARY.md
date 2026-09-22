@@ -4,7 +4,7 @@ Date: 2026-09-22 (PT)
 Repo worktree: `/workspace/Harnesses/Harnesses-w07` (GitHub: KUR3Kevin/Harnesses)  
 Branch: `step2/w07-editor-integration` (from main `79a6fef`)  
 Feature commit: `6e0553848e4896e819ec975674dc2314aa33c68b`
-Branch tip: `322fdb8c1f729474dbe936b25e57e8fcaae75ce7` (local only; not pushed)
+Branch tip: `b5eb577bf4df752fb9307882bd674a5db187e924` (local only; not pushed)
 Scope: Master Build Guide work package **W07 only** — editor integration (panel + bridge)  
 **Not pushed / not merged** to remote. Track A (W06 provider adapter) is out of scope on this branch — do not import or cherry-pick W06 OpenAI files.
 
