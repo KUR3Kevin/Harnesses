@@ -16,6 +16,8 @@ export interface FakeProviderOptions {
   scenario?: FakeScenario;
   /** Deterministic tool call id prefix for tests. */
   callIdPrefix?: string;
+  /** Optional delay before streaming (lets bridge cancel tests win the race). */
+  preDelayMs?: number;
 }
 
 /**
@@ -26,11 +28,13 @@ export class FakeProvider implements ModelProvider {
   readonly id = "fake";
   private readonly scenario: FakeScenario;
   private readonly callIdPrefix: string;
+  private readonly preDelayMs: number;
   private turn = 0;
 
   constructor(options: FakeProviderOptions = {}) {
     this.scenario = options.scenario ?? "edit_hello";
     this.callIdPrefix = options.callIdPrefix ?? "fake-call";
+    this.preDelayMs = options.preDelayMs ?? 0;
   }
 
   capabilities(): ProviderCapabilities {
@@ -50,6 +54,14 @@ export class FakeProvider implements ModelProvider {
     if (abortSignal?.aborted) {
       yield { type: "error", code: "aborted", message: "Request aborted" };
       return;
+    }
+
+    if (this.preDelayMs > 0) {
+      const aborted = await sleep(this.preDelayMs, abortSignal);
+      if (aborted || abortSignal?.aborted) {
+        yield { type: "error", code: "aborted", message: "Request aborted" };
+        return;
+      }
     }
 
     this.turn += 1;
@@ -217,4 +229,19 @@ export class FakeProvider implements ModelProvider {
     };
     yield { type: "completed", finishReason: "stop" };
   }
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(true);
+      return;
+    }
+    const timer = setTimeout(() => resolve(false), ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

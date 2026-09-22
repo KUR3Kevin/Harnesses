@@ -58,6 +58,7 @@ export class HarnessRuntime {
   private pauseRequested = false;
   private cancelRequested = false;
   private readonly abort = new AbortController();
+  private currentRunId: string | null = null;
 
   constructor(options: RuntimeOptions) {
     this.store = new RunStore(options.dataDir);
@@ -68,6 +69,11 @@ export class HarnessRuntime {
 
   getStore(): RunStore {
     return this.store;
+  }
+
+  /** Active run id for bridge/UI; set as soon as startRun creates the record. */
+  getCurrentRunId(): string | null {
+    return this.currentRunId;
   }
 
   requestPause(): void {
@@ -82,6 +88,7 @@ export class HarnessRuntime {
   async startRun(input: StartRunInput): Promise<RunResult> {
     const limits = RunLimitsSchema.parse(input.limits ?? {});
     const runId = randomUUID();
+    this.currentRunId = runId;
     const created = nowIso();
     const run = this.store.createRun({
       id: runId,
@@ -207,6 +214,14 @@ export class HarnessRuntime {
         }
 
         if (toolReqs.length === 0) {
+          if (this.cancelRequested || this.abort.signal.aborted) {
+            this.store.updateRunState(runId, "canceled");
+            this.store.appendEvent(runId, "run_state_changed", {
+              state: "canceled",
+            });
+            this.checkpoint(runId, input.task);
+            break;
+          }
           this.store.updateRunState(runId, "completed");
           this.store.appendEvent(runId, "run_state_changed", {
             state: "completed",
