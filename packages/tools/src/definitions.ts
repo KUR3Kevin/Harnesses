@@ -73,11 +73,39 @@ export const APPLY_PATCH: ToolDefinition = {
   safeRetry: false,
 };
 
+export const RUN_COMMAND: ToolDefinition = {
+  name: "run_command",
+  description:
+    "Run an argv command via the isolated command worker (workspace cwd, scrubbed env, timeout, output caps, process-group cancel). Not a shell string.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      argv: {
+        type: "array",
+        items: { type: "string" },
+        description: "Executable + arguments (no shell interpolation)",
+      },
+      cwd: {
+        type: "string",
+        description: "Working directory relative to workspace root",
+      },
+      timeoutMs: { type: "number" },
+    },
+    required: ["argv"],
+  },
+  effect: "external",
+  timeoutMs: 60_000,
+  outputLimitBytes: 256_000,
+  requiredPermissions: ["workspace:command"],
+  safeRetry: false,
+};
+
 export const FIRST_TOOLS: ToolDefinition[] = [
   READ_FILE,
   SEARCH_FILES,
   PROPOSE_PATCH,
   APPLY_PATCH,
+  RUN_COMMAND,
 ];
 
 export function toolRegistry(

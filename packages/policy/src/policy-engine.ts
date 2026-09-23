@@ -10,11 +10,17 @@ export type PolicyDecision =
 export interface PolicyContext {
   mode: PolicyMode;
   knownTools: Map<string, ToolDefinition>;
+  /**
+   * When false, run_command stays denied even in Run mode.
+   * Runtime sets true only when a non-disabled CommandWorker is wired.
+   */
+  commandWorkerEnabled?: boolean;
 }
 
 /**
  * Tool eligibility: Plan mode allows read + propose_patch only.
- * Run mode allows declared tools including apply_patch.
+ * Run mode allows declared tools including apply_patch and run_command
+ * (run_command only when an isolated CommandWorker is enabled).
  * Unknown tools are always denied. Model output cannot elevate permissions.
  */
 export function evaluateToolPolicy(
@@ -37,7 +43,7 @@ export function evaluateToolPolicy(
         reason: `Plan mode cannot execute write tool "${toolName}"`,
       };
     }
-    if (def.effect === "external") {
+    if (def.effect === "external" || toolName === "run_command") {
       return {
         decision: "deny",
         reason: `Plan mode cannot execute external tool "${toolName}"`,
@@ -46,11 +52,15 @@ export function evaluateToolPolicy(
   }
 
   if (toolName === "run_command") {
-    return {
-      decision: "deny",
-      reason:
-        "run_command is disabled until an isolated worker backend is selected (W08)",
-    };
+    if (!ctx.commandWorkerEnabled) {
+      return {
+        decision: "deny",
+        reason:
+          "run_command is disabled: no isolated command worker is configured (see ADR-0007). Manual path: run the command in a terminal inside the workspace.",
+      };
+    }
+    // Run mode + isolated worker: allow. Boundaries enforced by CommandWorker.
+    return { decision: "allow" };
   }
 
   return { decision: "allow" };

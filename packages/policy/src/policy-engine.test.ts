@@ -35,6 +35,16 @@ function tools(): Map<string, ToolDefinition> {
       requiredPermissions: [],
       safeRetry: true,
     },
+    {
+      name: "run_command",
+      description: "cmd",
+      inputSchema: {},
+      effect: "external",
+      timeoutMs: 1000,
+      outputLimitBytes: 1000,
+      requiredPermissions: [],
+      safeRetry: false,
+    },
   ];
   return new Map(defs.map((d) => [d.name, d]));
 }
@@ -68,6 +78,35 @@ describe("evaluateToolPolicy", () => {
       "apply_patch",
       { path: "a.ts" },
       { mode: "run", knownTools: tools() },
+    );
+    assert.equal(r.decision, "allow");
+  });
+
+  it("plan mode denies run_command even when worker enabled", () => {
+    const r = evaluateToolPolicy(
+      "run_command",
+      { argv: ["echo", "hi"] },
+      { mode: "plan", knownTools: tools(), commandWorkerEnabled: true },
+    );
+    assert.equal(r.decision, "deny");
+    if (r.decision === "deny") assert.match(r.reason, /Plan mode/);
+  });
+
+  it("run mode denies run_command when worker not enabled", () => {
+    const r = evaluateToolPolicy(
+      "run_command",
+      { argv: ["echo", "hi"] },
+      { mode: "run", knownTools: tools(), commandWorkerEnabled: false },
+    );
+    assert.equal(r.decision, "deny");
+    if (r.decision === "deny") assert.match(r.reason, /isolated command worker/);
+  });
+
+  it("run mode allows run_command when isolated worker enabled", () => {
+    const r = evaluateToolPolicy(
+      "run_command",
+      { argv: ["echo", "hi"] },
+      { mode: "run", knownTools: tools(), commandWorkerEnabled: true },
     );
     assert.equal(r.decision, "allow");
   });
