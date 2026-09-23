@@ -3,7 +3,7 @@
 Date: 2026-09-23 (PT)  
 Repo: `/workspace/Harnesses` (GitHub: KUR3Kevin/Harnesses)  
 Branch: `step3/w08-isolated-worker` (from main `e998ed6d9019d939194a49ee5c674ad5abbe09cf`)  
-Feature commit: *(filled after commit)*  
+Feature commit: `28cd7be0cb3774a8af0816835769cea30b8cf172`  
 Branch tip: `git rev-parse step3/w08-isolated-worker` (local only; not pushed)  
 Scope: Master Build Guide work package **W08 only** — isolated command worker  
 **Not pushed / not merged.** No W09+.
@@ -62,11 +62,11 @@ npm run demo:extension-offline
 
 | Command | Result |
 | --- | --- |
-| `npm run build` | *(filled after verify)* |
-| `npm run typecheck` | *(filled after verify)* |
-| `npm test` | *(filled after verify)* |
-| `npm run demo:offline` | *(filled after verify)* |
-| `npm run demo:extension-offline` | *(filled after verify)* |
+| `npm run build` | **pass** (`tsc -b`) |
+| `npm run typecheck` | **pass** |
+| `npm test` | **pass** — contracts/core/policy/providers/storage/tools/worker (incl. CommandWorker) + vscode host-client IPC + integration |
+| `npm run demo:offline` | **pass** — `DEMO OK (offline)` |
+| `npm run demo:extension-offline` | **pass** — `DEMO EXTENSION-OFFLINE OK` |
 
 Environment: Linux x86_64, Node v20.19.2, npm 9.2.0.
 

@@ -2,7 +2,7 @@ Task ID: W08 (Step 3 — isolated command worker)
 Builder/model as reported by the interface: Grok Bot (executor subagent)
 Date: 2026-09-23 (America/Los_Angeles)
 Base commit or supplied source snapshot: main `e998ed6d9019d939194a49ee5c674ad5abbe09cf`
-Resulting commit or patch reference: *(filled after commit)* on branch `step3/w08-isolated-worker` (local only; not pushed)
+Resulting commit or patch reference: `28cd7be0cb3774a8af0816835769cea30b8cf172` on branch `step3/w08-isolated-worker` (local only; not pushed)
 
 Objective:
 Deliver Master Build Guide W08 only: choose command isolation backend for this OS, environment boundary, process cleanup; demonstrate containment and cancel; enable `run_command` only through the isolated path.
@@ -25,7 +25,12 @@ Decisions and reasons:
 - See ADR-0007 (bounded subprocess; Docker/bwrap unavailable; no unrestricted fallback)
 
 Checks actually executed:
-- *(filled after verify)*
+- Command: npm run build — success
+- Command: npm run typecheck — success
+- Command: npm test — success (unit + IPC + integration; CommandWorker containment/cancel/timeout/env)
+- Command: npm run demo:offline — DEMO OK (offline)
+- Command: npm run demo:extension-offline — DEMO EXTENSION-OFFLINE OK
+Environment: Linux x86_64, Node v20.19.2, npm 9.2.0
 
 Checks not executed and why:
 - Docker/`bwrap` isolation proof — tools not installed on builder
