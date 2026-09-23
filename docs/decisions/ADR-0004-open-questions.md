@@ -8,7 +8,7 @@ Question: Which product choices remain owner decisions, and what defaults allow 
 | --- | --- |
 | First shipping format | VS Code extension prototype (CLI offline demo first) |
 | First provider | Deterministic `FakeProvider` only |
-| Isolation stage | Offline + file-edit prototype; `run_command` disabled |
+| Isolation stage | W08 bounded subprocess on Linux/macOS (ADR-0007); not a full container sandbox |
 | License / distribution | Not selected; no LICENSE file yet |
 | Runtime foundation | Custom loop (ADR-0002) |
 | Storage | JSON file store (ADR-0003) |

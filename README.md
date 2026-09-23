@@ -2,7 +2,7 @@
 
 Open-source AI coding harness scaffold (offline-first). Engine is independent of the editor; a VS Code extension panel + stdio bridge lands in W07.
 
-**Status:** Step 2 Track B — W07 editor integration (this branch). See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/STEP2-W07-CHANGE-SUMMARY.md`](docs/STEP2-W07-CHANGE-SUMMARY.md).
+**Status:** Step 3 — W08 isolated command worker (this branch). See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/STEP3-W08-CHANGE-SUMMARY.md`](docs/STEP3-W08-CHANGE-SUMMARY.md).
 
 Authoritative plan: [`KUR3-Harness-Master-Build-Guide.md`](KUR3-Harness-Master-Build-Guide.md).
 
@@ -38,7 +38,7 @@ npm run demo:extension-offline
 | `packages/providers` | Fake provider (real providers later) |
 | `packages/policy` | Tool policy + path boundary |
 | `packages/tools` | Tool definitions + executor |
-| `packages/worker` | File worker (not a full sandbox) |
+| `packages/worker` | File worker + bounded command worker (ADR-0007; not a full sandbox) |
 | `packages/storage` | Durable runs/events/checkpoints/leases |
 | `apps/cli` | Developer CLI + offline demo |
 | `apps/vscode-extension` | Panel, commands, stdio bridge (W07) |
