@@ -13,7 +13,11 @@ import { RunLimitsSchema } from "@kur3/contracts";
 import { evaluateToolPolicy } from "@kur3/policy";
 import { RunStore } from "@kur3/storage";
 import { executeTool, toolRegistry } from "@kur3/tools";
-import { FileWorker } from "@kur3/worker";
+import {
+  FileWorker,
+  createCommandWorker,
+  type CommandWorker,
+} from "@kur3/worker";
 
 export interface RuntimeOptions {
   workspaceRoot: string;
@@ -52,6 +56,7 @@ function nowIso(): string {
 export class HarnessRuntime {
   private readonly store: RunStore;
   private readonly worker: FileWorker;
+  private readonly commandWorker: CommandWorker;
   private readonly provider: ModelProvider;
   private readonly holderId: string;
   private readonly tools = toolRegistry();
@@ -63,6 +68,9 @@ export class HarnessRuntime {
   constructor(options: RuntimeOptions) {
     this.store = new RunStore(options.dataDir);
     this.worker = new FileWorker({ workspaceRoot: options.workspaceRoot });
+    this.commandWorker = createCommandWorker({
+      workspaceRoot: options.workspaceRoot,
+    });
     this.provider = options.provider;
     this.holderId = options.holderId ?? randomUUID();
   }
@@ -238,6 +246,8 @@ export class HarnessRuntime {
         const policy = evaluateToolPolicy(req.name, req.input, {
           mode: input.task.mode,
           knownTools: this.tools,
+          commandWorkerEnabled:
+            this.commandWorker.isolationKind !== "disabled",
         });
         const inputDigest = digestInput(req.input);
 
@@ -294,7 +304,15 @@ export class HarnessRuntime {
 
         let result: unknown;
         try {
-          result = executeTool(this.worker, req.name, req.input);
+          result = await executeTool(
+            {
+              fileWorker: this.worker,
+              commandWorker: this.commandWorker,
+              abortSignal: this.abort.signal,
+            },
+            req.name,
+            req.input,
+          );
         } catch (err) {
           result = {
             status: "error",
