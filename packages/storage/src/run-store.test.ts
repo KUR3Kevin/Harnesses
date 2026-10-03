@@ -61,6 +61,37 @@ describe("RunStore", () => {
     assert.equal(b.ok, false);
   });
 
+  it("reloads a lease taken by another store instance", () => {
+    const early = new RunStore(dir);
+    store.createRun(sampleRun("r4"));
+    const held = store.acquireLease("r4", "holder-a");
+    assert.equal(held.ok, true);
+    const again = early.acquireLease("r4", "holder-b");
+    assert.equal(again.ok, false);
+    if (!again.ok) assert.equal(again.holderId, "holder-a");
+  });
+
+  it("round-trips tool calls", () => {
+    store.createRun(sampleRun("r5"));
+    store.upsertToolCall({
+      id: "c1",
+      runId: "r5",
+      name: "apply_patch",
+      input: { path: "a.txt" },
+      inputDigest: "abc",
+      policyDecision: "allow",
+      lifecycle: "running",
+      mutates: true,
+      expectedPreHash: "pre",
+      expectedPostHash: "post",
+    });
+    const reloaded = new RunStore(dir);
+    const calls = reloaded.listToolCalls("r5");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.lifecycle, "running");
+    assert.equal(calls[0]?.expectedPostHash, "post");
+  });
+
   it("rejects illegal state transition", () => {
     store.createRun(sampleRun("r3"));
     store.updateRunState("r3", "running");

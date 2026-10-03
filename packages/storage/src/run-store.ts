@@ -5,11 +5,13 @@ import {
   CheckpointSchema,
   EventSchema,
   RunSchema,
+  ToolCallSchema,
   type Checkpoint,
   type Event,
   type EventType,
   type Run,
   type RunState,
+  type ToolCall,
   canTransition,
 } from "@kur3/contracts";
 
@@ -19,10 +21,19 @@ interface StoreData {
   events: Event[];
   checkpoints: Record<string, Checkpoint>;
   leases: Record<string, { holderId: string; expiresAt: string }>;
+  /** Keyed by `${runId}:${callId}`. */
+  toolCalls: Record<string, ToolCall>;
 }
 
 function emptyData(): StoreData {
-  return { version: 1, runs: {}, events: [], checkpoints: {}, leases: {} };
+  return {
+    version: 1,
+    runs: {},
+    events: [],
+    checkpoints: {},
+    leases: {},
+    toolCalls: {},
+  };
 }
 
 /**
@@ -43,8 +54,20 @@ export class RunStore {
 
   private load(): StoreData {
     if (!fs.existsSync(this.dataPath)) return emptyData();
-    const raw = JSON.parse(fs.readFileSync(this.dataPath, "utf8")) as StoreData;
-    return raw;
+    const raw = JSON.parse(fs.readFileSync(this.dataPath, "utf8")) as Partial<StoreData>;
+    return {
+      version: 1,
+      runs: raw.runs ?? {},
+      events: raw.events ?? [],
+      checkpoints: raw.checkpoints ?? {},
+      leases: raw.leases ?? {},
+      toolCalls: raw.toolCalls ?? {},
+    };
+  }
+
+  /** Reload durable state so a lease taken by another process is visible. */
+  reload(): void {
+    this.data = this.load();
   }
 
   private persist(): void {
@@ -140,6 +163,26 @@ export class RunStore {
     return this.data.checkpoints[runId];
   }
 
+  private toolKey(runId: string, callId: string): string {
+    return `${runId}:${callId}`;
+  }
+
+  upsertToolCall(call: ToolCall): ToolCall {
+    const parsed = ToolCallSchema.parse(call);
+    if (!this.data.runs[parsed.runId]) {
+      throw new Error(`Unknown run: ${parsed.runId}`);
+    }
+    this.data.toolCalls[this.toolKey(parsed.runId, parsed.id)] = parsed;
+    this.persist();
+    return parsed;
+  }
+
+  listToolCalls(runId: string): ToolCall[] {
+    return Object.values(this.data.toolCalls)
+      .filter((c) => c.runId === runId)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   /**
    * Acquire an exclusive lease for a run. Duplicate resume is rejected
    * while another holder owns a non-expired lease.
@@ -149,6 +192,7 @@ export class RunStore {
     holderId: string,
     ttlMs = 60_000,
   ): { ok: true } | { ok: false; reason: string; holderId?: string } {
+    this.reload();
     if (!this.data.runs[runId]) {
       return { ok: false, reason: `Unknown run: ${runId}` };
     }
@@ -174,6 +218,7 @@ export class RunStore {
   }
 
   releaseLease(runId: string, holderId: string): void {
+    this.reload();
     const existing = this.data.leases[runId];
     if (existing?.holderId === holderId) {
       delete this.data.leases[runId];

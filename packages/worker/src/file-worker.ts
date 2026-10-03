@@ -45,6 +45,36 @@ export class FileWorker {
     return this.root;
   }
 
+  /**
+   * Hash current workspace bytes without writing.
+   * A missing file hashes as empty content so it can be compared to a pre-hash.
+   */
+  inspectHash(
+    userPath: string,
+  ):
+    | { status: "ok"; path: string; exists: boolean; hash: string }
+    | { status: "error"; error: string } {
+    const resolved = resolveWorkspacePath(this.root, userPath);
+    if (!resolved.ok) {
+      return { status: "error", error: resolved.reason };
+    }
+    if (!fs.existsSync(resolved.absolutePath)) {
+      return {
+        status: "ok",
+        path: resolved.relativePath,
+        exists: false,
+        hash: contentHash(""),
+      };
+    }
+    const buf = fs.readFileSync(resolved.absolutePath);
+    return {
+      status: "ok",
+      path: resolved.relativePath,
+      exists: true,
+      hash: contentHash(buf),
+    };
+  }
+
   readFile(userPath: string): FileReadResult {
     const resolved = resolveWorkspacePath(this.root, userPath);
     if (!resolved.ok) {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BudgetSnapshotSchema } from "./budget.js";
 import { SCHEMA_VERSION } from "./protocol.js";
 import {
   RunStateSchema,
@@ -44,6 +45,13 @@ export const RunLimitsSchema = z.object({
   maxCommandMs: z.number().int().positive().default(60_000),
   maxTransientRetries: z.number().int().nonnegative().default(2),
   maxIdenticalFailures: z.number().int().positive().default(3),
+  /**
+   * Estimated spending limit in USD. Absent means no harness limit is configured.
+   * Not a guaranteed provider billing cap (see ESTIMATED_SPENDING_LIMIT_NOTE).
+   */
+  estimatedSpendingLimitUsd: z.number().nonnegative().optional(),
+  /** Upper bound used to reserve maximum output cost before a request. */
+  maxOutputTokens: z.number().int().positive().optional(),
 });
 export type RunLimits = z.infer<typeof RunLimitsSchema>;
 
@@ -59,6 +67,7 @@ export const RunSchema = z.object({
   parentRunId: z.string().optional(),
   toolStepsUsed: z.number().int().nonnegative().default(0),
   lastEventSequence: z.number().int().nonnegative().default(0),
+  budget: BudgetSnapshotSchema.optional(),
 });
 export type Run = z.infer<typeof RunSchema>;
 
@@ -75,6 +84,11 @@ export const EventTypeSchema = z.enum([
   "verification_recorded",
   "error",
   "usage",
+  "tool_outcome_unknown",
+  "budget_reserved",
+  "budget_reconciled",
+  "budget_limit_raised",
+  "run_interrupted",
 ]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 
@@ -100,6 +114,22 @@ export const ToolCallSchema = z.object({
   lifecycle: ToolCallLifecycleSchema,
   result: z.unknown().optional(),
   error: z.string().optional(),
+  effect: z.enum(["read", "write", "external"]).optional(),
+  safeRetry: z.boolean().optional(),
+  /** True for actions that mutate workspace or call external executors. */
+  mutates: z.boolean().optional(),
+  expectedPreHash: z.string().optional(),
+  expectedPostHash: z.string().optional(),
+  reconciliation: z
+    .enum([
+      "already_applied_skip_write",
+      "retry_write_once",
+      "conflict_skip_write",
+      "retry_safe_readonly",
+      "unsafe_no_retry",
+      "terminal_unchanged",
+    ])
+    .optional(),
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
