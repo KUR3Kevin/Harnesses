@@ -13,3 +13,8 @@ export type {
   ProviderErrorCode,
   NormalizedProviderError,
 } from "./openai-compatible-errors.js";
+export {
+  AnthropicMessagesProvider,
+  toAnthropicMessages,
+} from "./anthropic-messages-provider.js";
+export type { AnthropicMessagesProviderOptions } from "./anthropic-messages-provider.js";
