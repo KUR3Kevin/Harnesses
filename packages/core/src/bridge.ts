@@ -1,6 +1,7 @@
 import type {
   BridgeRequest,
   BridgeResponse,
+  ModelPriceTable,
   ModelProvider,
   StartRunParams,
 } from "@kur3/contracts";
@@ -16,6 +17,8 @@ export interface HarnessBridgeOptions {
   /** Injected provider — FakeProvider for offline; any ModelProvider later. */
   provider: ModelProvider;
   holderId?: string;
+  prices?: ModelPriceTable;
+  repositoryRevision?: string;
 }
 
 type BridgeErrorCode = NonNullable<BridgeResponse["error"]>["code"];
@@ -34,6 +37,8 @@ export class InProcessHarnessBridge {
   private readonly provider: ModelProvider;
   private readonly holderId: string;
   private runtime: HarnessRuntime | null = null;
+  private runtimeWorkspace: string | null = null;
+  private runtimeDataDir: string | null = null;
   private activeRunId: string | null = null;
   private runPromise: Promise<RunResult> | null = null;
   private lastResult: RunResult | null = null;
@@ -41,7 +46,12 @@ export class InProcessHarnessBridge {
   constructor(options: HarnessBridgeOptions) {
     this.provider = options.provider;
     this.holderId = options.holderId ?? "editor-bridge";
+    this.prices = options.prices;
+    this.repositoryRevision = options.repositoryRevision;
   }
+
+  private readonly prices?: ModelPriceTable;
+  private readonly repositoryRevision?: string;
 
   getActiveRunId(): string | null {
     return this.activeRunId;
@@ -77,6 +87,10 @@ export class InProcessHarnessBridge {
           req.params.runId,
           req.params.afterSequence,
         );
+      case "resume_run":
+        return this.resumeRun(req.requestId, req.params);
+      case "export_handoff":
+        return this.exportHandoff(req.requestId, req.params);
       default: {
         const _exhaustive: never = req;
         void _exhaustive;
@@ -135,7 +149,11 @@ export class InProcessHarnessBridge {
       dataDir: validated.dataDir,
       provider: this.provider,
       holderId: this.holderId,
+      prices: this.prices,
+      repositoryRevision: this.repositoryRevision,
     });
+    this.runtimeWorkspace = validated.workspaceRoot;
+    this.runtimeDataDir = validated.dataDir;
     this.lastResult = null;
 
     const runtime = this.runtime;
@@ -277,6 +295,103 @@ export class InProcessHarnessBridge {
       summary:
         this.lastResult?.run.id === runId ? this.lastResult.summary : undefined,
     });
+  }
+
+  private attachRuntime(workspaceRoot: string, dataDir: string): HarnessRuntime {
+    if (
+      this.runtime &&
+      this.runtimeWorkspace === workspaceRoot &&
+      this.runtimeDataDir === dataDir
+    ) {
+      return this.runtime;
+    }
+    if (this.runPromise) {
+      throw Object.assign(
+        new Error("Cannot attach a different workspace while a run is active"),
+        { code: "run_already_active" as const },
+      );
+    }
+    this.runtime = new HarnessRuntime({
+      workspaceRoot,
+      dataDir,
+      provider: this.provider,
+      holderId: this.holderId,
+      prices: this.prices,
+      repositoryRevision: this.repositoryRevision,
+    });
+    this.runtimeWorkspace = workspaceRoot;
+    this.runtimeDataDir = dataDir;
+    return this.runtime;
+  }
+
+  private async resumeRun(
+    requestId: string,
+    params: { runId: string; workspaceRoot: string; dataDir: string },
+  ): Promise<BridgeResponse> {
+    if (this.runPromise && this.activeRunId === params.runId) {
+      return this.fail(
+        requestId,
+        "run_already_active",
+        `Run ${params.runId} is still active`,
+      );
+    }
+    let runtime: HarnessRuntime;
+    try {
+      runtime = this.attachRuntime(params.workspaceRoot, params.dataDir);
+    } catch (err) {
+      return this.fail(
+        requestId,
+        "run_already_active",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    const result = await runtime.resumeRun(params.runId);
+    if (!result.ok && result.reason?.includes("lease")) {
+      return this.fail(requestId, "lease_held", result.reason, { run: result.run });
+    }
+    if (!result.ok) {
+      const missing = result.reason?.startsWith("Unknown run");
+      return this.fail(
+        requestId,
+        missing ? "run_not_found" : "invalid_request",
+        result.reason ?? "resume failed",
+        { run: result.run },
+      );
+    }
+    this.activeRunId = result.run?.id ?? params.runId;
+    return this.ok(requestId, { run: result.run, summary: result.summary });
+  }
+
+  private async exportHandoff(
+    requestId: string,
+    params: { runId: string; workspaceRoot: string; dataDir: string },
+  ): Promise<BridgeResponse> {
+    let runtime: HarnessRuntime;
+    try {
+      runtime = this.attachRuntime(params.workspaceRoot, params.dataDir);
+    } catch (err) {
+      return this.fail(
+        requestId,
+        "run_already_active",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    if (!runtime.getStore().getRun(params.runId)) {
+      return this.fail(requestId, "run_not_found", `Unknown run ${params.runId}`);
+    }
+    try {
+      const handoff = runtime.exportHandoff(params.runId);
+      return this.ok(requestId, {
+        run: runtime.getStore().getRun(params.runId),
+        handoff,
+      });
+    } catch (err) {
+      return this.fail(
+        requestId,
+        "internal",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 }
 

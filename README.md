@@ -2,7 +2,7 @@
 
 Open-source AI coding harness scaffold (offline-first). Engine is independent of the editor; a VS Code extension panel + stdio bridge lands in W07.
 
-**Status:** Step 3 — W08 isolated command worker (this branch). See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/STEP3-W08-CHANGE-SUMMARY.md`](docs/STEP3-W08-CHANGE-SUMMARY.md).
+**Status:** Step 3 — W09 recovery and budget hardening (this branch). See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/STEP3-W09-CHANGE-SUMMARY.md`](docs/STEP3-W09-CHANGE-SUMMARY.md). W08 worker notes remain in [`docs/STEP3-W08-CHANGE-SUMMARY.md`](docs/STEP3-W08-CHANGE-SUMMARY.md).
 
 Authoritative plan: [`KUR3-Harness-Master-Build-Guide.md`](KUR3-Harness-Master-Build-Guide.md).
 

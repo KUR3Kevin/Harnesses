@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { EventSchema, RunLimitsSchema, RunSchema, TaskSchema } from "./entities.js";
+import { HandoffSchema } from "./handoff.js";
 
 /**
  * Versioned UI ↔ engine bridge messages (Master Build Guide §7).
@@ -16,6 +17,7 @@ export const BridgeErrorSchema = z.object({
     "protocol_mismatch",
     "run_not_found",
     "run_already_active",
+    "lease_held",
     "no_active_run",
     "internal",
   ]),
@@ -77,6 +79,26 @@ export const BridgeRequestSchema = z.discriminatedUnion("command", [
       runId: z.string().min(1),
     }),
   }),
+  z.object({
+    protocolVersion: z.string(),
+    requestId: z.string().min(1),
+    command: z.literal("resume_run"),
+    params: z.object({
+      runId: z.string().min(1),
+      workspaceRoot: z.string().min(1),
+      dataDir: z.string().min(1),
+    }),
+  }),
+  z.object({
+    protocolVersion: z.string(),
+    requestId: z.string().min(1),
+    command: z.literal("export_handoff"),
+    params: z.object({
+      runId: z.string().min(1),
+      workspaceRoot: z.string().min(1),
+      dataDir: z.string().min(1),
+    }),
+  }),
 ]);
 export type BridgeRequest = z.infer<typeof BridgeRequestSchema>;
 
@@ -90,6 +112,7 @@ export const BridgeResponseSchema = z.object({
   /** Present when start_run finished (or was already complete). */
   summary: z.string().optional(),
   activeRunId: z.string().optional(),
+  handoff: HandoffSchema.optional(),
 });
 export type BridgeResponse = z.infer<typeof BridgeResponseSchema>;
 
