@@ -30,3 +30,9 @@ Checks not executed and why:
 
 Remaining work / next action:
 - Kevin reviews; PR opens the PR. Optional follow-up: wire `switch_provider` into runtime + bridge.
+
+## Review-fix pass (2026-10-23 PT)
+Scope: PR #7 review P0 + P1-1..P1-6 + tests (owner-approved). See STEP4-W10-CHANGE-SUMMARY.md "PR #7 review fixes" and the ADR-0009 amendment.
+Checks executed after a clean build (tsbuildinfo + dist removed): build, typecheck, test (149: 147 pass, 0 fail, 2 opt-in live skipped), demo:offline, demo:extension-offline — all success.
+Not executed: live vendor test (needs real keys; forbidden here).
+Next action: Kevin reviews; merge only on Kevin's explicit yes.

@@ -22,3 +22,17 @@ Options 2 and 4.
 - `ModelProvider` contract unchanged. Additive: `PortableCheckpointSchema` in contracts, `provider-switch.ts` in core, new adapter export in providers.
 - Not wired into `HarnessRuntime` or the bridge (`switch_provider` bridge command not added) — callers persist the result. Deferred to keep W06–W09 surfaces untouched.
 - No live API was called; real-vendor wire drift is not proven.
+
+## Amendment 2026-10-23 — PR #7 review fixes
+
+Supersedes the "not wired" and "tool results as user text" points above.
+
+- **Switch is live (P0).** `HarnessRuntime` resolves each turn's provider from the run's persisted `providerId` via a registry (`provider` + `providers[]`). `HarnessRuntime.switchProvider(runId, {requestId, toProviderId, toModelId})` and bridge command `switch_provider` persist the switch; the next `resume_run` streams through the new provider.
+- **Strict clean boundary (P1-1).** Additional refusals: `stale_checkpoint` (sequence ≠ run), `checkpoint_state_mismatch`, `task_mismatch`, `run_not_switchable`, `ledger_unavailable` (ledger is required), `ledger_mismatch` (ledger vs `tool_started`/`tool_finished` events, or foreign-run entries), `handoff_invalid`. Runtime checkpoints are written together with their own `checkpoint_saved` event so a freshly paused run satisfies the strict check.
+- **Handoff = small verified conversation handoff (owner decision).** Not full conversation inheritance. The new provider receives a system preamble (verified checkpoint sequence, state, task, goal, scope, acceptance, decisions, artifacts, checks, remaining work, next action) plus one continuation turn. Validated for required facts, secret-shaped strings and a sha256 digest. Reason: smaller attack and leak surface, no dependency on provider-specific transcript shapes, and verifiable content; cost is that the new provider must re-read files.
+- **Atomic, leased, idempotent (P1-4).** One temp→fsync→rename snapshot holds run, checkpoint, `provider_switched` event and the request-id record; per-request run lease; repeated request id = no-op.
+- **Errors fail the run (P1-5)** and invalidate the turn: no tool from an errored turn executes.
+- **Turn-level tool validation (P1-2)** in both live-style adapters: one malformed call → whole turn invalid.
+- **Structured tool results (P1-3).** `ProviderMessage.toolCalls` on assistant turns; adapters emit native tool_use/tool_result (Anthropic) or tool_calls/tool_call_id (OpenAI). Orphans become a JSON "untrusted tool output" envelope.
+- **Vendor verification (P1-6).** Documented-shape fixtures + contract tests; opt-in live test (`KUR3_LIVE_VENDOR_TESTS=1`). A real-key run is still open.
+- Contract additions (additive): `ProviderToolCallSchema`, `ProviderMessage.toolCalls`, `provider_switched` event type, `switch_provider` bridge command, `switch_refused` bridge error, `PortableCheckpoint.verifiedAgainst` + `handoffDigest`. `switchProvider()`'s `toolCalls` argument is now required (breaking for direct callers of the pure function; none outside tests).
