@@ -8,7 +8,7 @@ import {
   OpenAICompatibleProvider,
 } from "@kur3/providers";
 import { freshBudget } from "./budget.js";
-import { switchProvider, toPortableCheckpoint } from "./provider-switch.js";
+import { switchProvider, toPortableCheckpoint, verifyPortableCheckpoint } from "./provider-switch.js";
 
 const NOW = "2026-10-10T11:00:00.000Z";
 const OPAQUE = ["OPAQUE-THINKING-SIG", "resp_opaque_123", "cache-handle-xyz", "SECRET-REASONING"];
@@ -86,6 +86,19 @@ function checkpoint(extra: Partial<Checkpoint> = {}): Checkpoint {
   };
 }
 
+/** Ledger that agrees with EVENTS (c-apply finished). */
+const LEDGER: ToolCall[] = [
+  {
+    id: "c-apply",
+    runId: "r1",
+    name: "apply_patch",
+    input: { path: "src/hello.ts" },
+    inputDigest: "d",
+    policyDecision: "allow",
+    lifecycle: "succeeded",
+  },
+];
+
 function anthropic(seen: { body?: string }) {
   return new AnthropicMessagesProvider({
     baseUrl: "https://example.test/v1",
@@ -106,7 +119,7 @@ describe("W10 provider switch", () => {
   it("A15: goal, decisions, artifacts and checks survive a provider change", async () => {
     const seen: { body?: string } = {};
     const to = anthropic(seen);
-    const res = switchProvider({
+    const res = switchProvider({ toolCalls: LEDGER,
       run: run(),
       checkpoint: checkpoint(),
       events: EVENTS,
@@ -148,10 +161,10 @@ describe("W10 provider switch", () => {
   });
 
   it("switch back the other way keeps the same facts (round trip)", () => {
-    const first = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, to: anthropic({}), toModelId: "claude-x", now: () => NOW });
-    assert.ok(first.ok);
+    const first = switchProvider({ toolCalls: LEDGER, run: run(), checkpoint: checkpoint(), events: EVENTS, to: anthropic({}), toModelId: "claude-x", now: () => NOW });
+    assert.equal(first.ok, true);
     if (!first.ok) return;
-    const back = switchProvider({
+    const back = switchProvider({ toolCalls: LEDGER,
       run: first.run,
       checkpoint: first.checkpoint,
       events: EVENTS,
@@ -159,20 +172,22 @@ describe("W10 provider switch", () => {
       toModelId: "gpt-x",
       now: () => NOW,
     });
-    assert.ok(back.ok);
+    assert.equal(back.ok, true);
     if (!back.ok) return;
     assert.equal(back.checkpoint.taskFacts.goal, first.checkpoint.taskFacts.goal);
     assert.deepEqual(back.checkpoint.taskFacts.decisions, first.checkpoint.taskFacts.decisions);
     assert.deepEqual(back.portable.handoff.verifications, first.portable.handoff.verifications);
-    assert.deepEqual(back.checkpoint.taskFacts.transcript, first.checkpoint.taskFacts.transcript);
+    // Small handoff, not inherited conversation: each switch seeds 2 messages.
+    assert.deepEqual((back.checkpoint.taskFacts.transcript as unknown[]).length, 2);
+    assert.match(String((back.checkpoint.taskFacts.transcript as Array<{ content: string }>)[0]!.content), /from anthropic-messages\/claude-x/);
     assert.equal((back.checkpoint.taskFacts.providerSwitches as unknown[]).length, 2);
   });
 
   it("opaque provider state and unsupported message types are not forwarded", async () => {
     const seen: { body?: string } = {};
     const to = anthropic(seen);
-    const res = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, to, toModelId: "claude-x", now: () => NOW });
-    assert.ok(res.ok);
+    const res = switchProvider({ toolCalls: LEDGER, run: run(), checkpoint: checkpoint(), events: EVENTS, to, toModelId: "claude-x", now: () => NOW });
+    assert.equal(res.ok, true);
     if (!res.ok) return;
     for await (const _ of to.stream({ modelId: "claude-x", messages: res.messages })) {
       // drain
@@ -181,14 +196,15 @@ describe("W10 provider switch", () => {
     for (const o of OPAQUE) assert.ok(!everything.includes(o), `leaked ${o}`);
     assert.equal(res.checkpoint.taskFacts.providerState, undefined);
     assert.equal(res.checkpoint.taskFacts.promptCache, undefined);
-    assert.deepEqual(res.portable.transcript.map((m) => m.role), ["user", "assistant", "tool"]);
+    // Owner decision: small verified handoff, not full conversation inheritance.
+    assert.deepEqual(res.portable.transcript.map((m) => m.role), ["system", "user"]);
+    assert.ok(!JSON.stringify(res.messages).includes("Patching."));
     assert.ok(res.portable.dropped.includes("taskFacts.providerState"));
-    assert.ok(res.portable.dropped.includes("transcript.reasoning_signature"));
-    assert.ok(res.portable.dropped.some((d) => d.endsWith(":unsupported")));
+    assert.ok(res.portable.dropped.includes("transcript:not_inherited(5)"));
   });
 
   it("refuses to switch with a pending tool call (checkpoint or ledger)", () => {
-    const a = switchProvider({ run: run(), checkpoint: checkpoint({ pendingCalls: ["c9"] }), events: EVENTS, to: new FakeProvider(), toModelId: "f" });
+    const a = switchProvider({ toolCalls: LEDGER, run: run(), checkpoint: checkpoint({ pendingCalls: ["c9"] }), events: EVENTS, to: new FakeProvider(), toModelId: "f" });
     assert.deepEqual(a.ok ? null : a.reason, "pending_tool_calls");
     const unknownCall = {
       id: "c10",
@@ -199,25 +215,25 @@ describe("W10 provider switch", () => {
       policyDecision: "allow",
       lifecycle: "outcome_unknown",
     } as ToolCall;
-    const b = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, toolCalls: [unknownCall], to: new FakeProvider(), toModelId: "f" });
+    const b = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, toolCalls: [...LEDGER, unknownCall], to: new FakeProvider(), toModelId: "f" });
     assert.equal(b.ok ? null : b.reason, "pending_tool_calls");
     assert.match(b.ok ? "" : b.detail, /c10/);
   });
 
   it("refuses without a checkpoint, while running, or onto the same provider", () => {
     const fake = new FakeProvider();
-    assert.equal((switchProvider({ run: run(), checkpoint: undefined, events: [], to: fake, toModelId: "f" }) as { reason: string }).reason, "no_checkpoint");
-    assert.equal((switchProvider({ run: run({ state: "running" }), checkpoint: checkpoint(), events: [], to: fake, toModelId: "f" }) as { reason: string }).reason, "run_active");
-    assert.equal((switchProvider({ run: run({ providerId: fake.id, modelId: "f" }), checkpoint: checkpoint(), events: [], to: fake, toModelId: "f" }) as { reason: string }).reason, "same_provider");
+    assert.equal((switchProvider({ toolCalls: LEDGER, run: run(), checkpoint: undefined, events: [], to: fake, toModelId: "f" }) as { reason: string }).reason, "no_checkpoint");
+    assert.equal((switchProvider({ toolCalls: LEDGER, run: run({ state: "running" }), checkpoint: checkpoint(), events: [], to: fake, toModelId: "f" }) as { reason: string }).reason, "run_active");
+    assert.equal((switchProvider({ toolCalls: LEDGER, run: run({ providerId: fake.id, modelId: "f" }), checkpoint: checkpoint(), events: [], to: fake, toModelId: "f" }) as { reason: string }).reason, "same_provider");
   });
 
   it("budget: refuses with an unreconciled reservation; no reservation crosses; spend kept", () => {
     const fake = new FakeProvider();
     const held = run({ budget: { ...freshBudget(5), reservedUsd: 0.1 } });
-    const r = switchProvider({ run: held, checkpoint: checkpoint(), events: EVENTS, to: fake, toModelId: "f" });
+    const r = switchProvider({ toolCalls: LEDGER, run: held, checkpoint: checkpoint(), events: EVENTS, to: fake, toModelId: "f" });
     assert.equal(r.ok ? null : r.reason, "reservation_in_flight");
-    const ok = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, to: fake, toModelId: "f" });
-    assert.ok(ok.ok);
+    const ok = switchProvider({ toolCalls: LEDGER, run: run(), checkpoint: checkpoint(), events: EVENTS, to: fake, toModelId: "f" });
+    assert.equal(ok.ok, true);
     if (!ok.ok) return;
     assert.equal(ok.run.budget!.reservedUsd, 0);
     assert.equal(ok.run.budget!.spentKnownUsd, 0.42);
@@ -227,7 +243,63 @@ describe("W10 provider switch", () => {
   it("toPortableCheckpoint redacts secret-shaped strings", () => {
     const cp = checkpoint();
     (cp.taskFacts.transcript as unknown[]).push({ role: "user", content: "key sk-proj-abcdefghijkl" });
+    cp.taskFacts.goal = "Use key sk-proj-abcdefghijkl to deploy";
     const p = toPortableCheckpoint({ run: run(), checkpoint: cp, events: EVENTS });
     assert.ok(!JSON.stringify(p).includes("sk-proj-abcdefghijkl"));
+    assert.deepEqual(verifyPortableCheckpoint(p), []);
+  });
+
+  it("P1-1: stale checkpoint sequence is rejected", () => {
+    const r = switchProvider({ run: run({ lastEventSequence: 10 }), checkpoint: checkpoint(), events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(r.ok ? null : r.reason, "stale_checkpoint");
+    const older = switchProvider({ run: run(), checkpoint: checkpoint({ lastEventSequence: 8 }), events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(older.ok ? null : older.reason, "stale_checkpoint");
+  });
+
+  it("P1-1: runState and taskId must match the run", () => {
+    const st = switchProvider({ run: run({ state: "budget_exhausted" }), checkpoint: checkpoint(), events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(st.ok ? null : st.reason, "checkpoint_state_mismatch");
+    const cp = checkpoint();
+    cp.taskFacts.taskId = "other-task";
+    const tk = switchProvider({ run: run(), checkpoint: cp, events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(tk.ok ? null : tk.reason, "task_mismatch");
+    const term = switchProvider({ run: run({ state: "completed" }), checkpoint: checkpoint({ runState: "completed" }), events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(term.ok ? null : term.reason, "run_not_switchable");
+  });
+
+  it("P1-1: a missing toolCalls ledger is refused, never a bypass", () => {
+    const r = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, toolCalls: undefined, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(r.ok ? null : r.reason, "ledger_unavailable");
+  });
+
+  it("P1-1: ledger that disagrees with the event log is refused", () => {
+    // tool_finished for c-apply exists in events but the ledger is empty.
+    const missing = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, toolCalls: [], to: new FakeProvider(), toModelId: "f" });
+    assert.equal(missing.ok ? null : missing.reason, "ledger_mismatch");
+    assert.match(missing.ok ? "" : missing.detail, /c-apply/);
+    // Ledger entry from another run.
+    const foreign = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, toolCalls: [...LEDGER, { ...LEDGER[0]!, id: "x", runId: "r2" }], to: new FakeProvider(), toModelId: "f" });
+    assert.equal(foreign.ok ? null : foreign.reason, "ledger_mismatch");
+  });
+
+  it("handoff validation: required facts present, secrets redacted, digest verified", () => {
+    const cp = checkpoint();
+    delete cp.taskFacts.goal;
+    const noGoal = switchProvider({ run: run(), checkpoint: cp, events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(noGoal.ok ? null : noGoal.reason, "handoff_invalid");
+    assert.match(noGoal.ok ? "" : noGoal.detail, /missing task fact: goal/);
+
+    const ok = switchProvider({ run: run(), checkpoint: checkpoint(), events: EVENTS, toolCalls: LEDGER, to: new FakeProvider(), toModelId: "f" });
+    assert.equal(ok.ok, true);
+    if (!ok.ok) return;
+    assert.deepEqual(verifyPortableCheckpoint(ok.portable), []);
+    assert.equal(ok.portable.verifiedAgainst.checkpointSequence, 9);
+    // Tampering (or an unredacted secret slipped in later) is detected.
+    const tampered = structuredClone(ok.portable);
+    tampered.transcript[1]!.content += " api_key=sk-live-abcdefghijk";
+    const problems = verifyPortableCheckpoint(tampered);
+    assert.ok(problems.some((p) => p.includes("unredacted secret")));
+    assert.ok(problems.some((p) => p.includes("digest mismatch")));
   });
 });
+

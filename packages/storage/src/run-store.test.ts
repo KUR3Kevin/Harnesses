@@ -98,4 +98,30 @@ describe("RunStore", () => {
     store.updateRunState("r3", "completed");
     assert.throws(() => store.updateRunState("r3", "running"));
   });
+
+  it("W10: saveCheckpointWithEvent covers its own event; commitProviderSwitch is atomic + idempotent", () => {
+    store.createRun(sampleRun("rs"));
+    const cp = store.saveCheckpointWithEvent({ runId: "rs", taskFacts: { taskId: "task-1" }, pendingCalls: [], savedAt: new Date().toISOString() });
+    assert.equal(cp.lastEventSequence, store.getRun("rs")!.lastEventSequence);
+    assert.equal(cp.runState, store.getRun("rs")!.state);
+    const args = {
+      requestId: "req-1",
+      runId: "rs",
+      expectedLastEventSequence: cp.lastEventSequence,
+      runPatch: { providerId: "other", modelId: "m2" },
+      checkpoint: { runId: "rs", taskFacts: { taskId: "task-1" }, pendingCalls: [], savedAt: new Date().toISOString() },
+      handoffDigest: "sha256:" + "0".repeat(64),
+    };
+    const stale = store.commitProviderSwitch({ ...args, expectedLastEventSequence: cp.lastEventSequence - 1 });
+    assert.equal(stale.ok ? null : stale.reason, "stale_run");
+    const first = store.commitProviderSwitch(args);
+    assert.ok(first.ok && !first.duplicate);
+    const reloaded = new RunStore(dir);
+    assert.equal(reloaded.getRun("rs")!.providerId, "other");
+    assert.equal(reloaded.getCheckpoint("rs")!.lastEventSequence, reloaded.getRun("rs")!.lastEventSequence);
+    assert.equal(reloaded.listEvents("rs").filter((e) => e.type === "provider_switched").length, 1);
+    const again = reloaded.commitProviderSwitch(args);
+    assert.ok(again.ok && again.duplicate);
+    assert.equal(reloaded.listEvents("rs").filter((e) => e.type === "provider_switched").length, 1);
+  });
 });

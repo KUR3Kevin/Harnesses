@@ -16,6 +16,8 @@ import type { RunResult } from "./runtime.js";
 export interface HarnessBridgeOptions {
   /** Injected provider — FakeProvider for offline; any ModelProvider later. */
   provider: ModelProvider;
+  /** Extra providers runs may switch to (switch_provider). */
+  providers?: ModelProvider[];
   holderId?: string;
   prices?: ModelPriceTable;
   repositoryRevision?: string;
@@ -35,6 +37,7 @@ type BridgeErrorCode = NonNullable<BridgeResponse["error"]>["code"];
  */
 export class InProcessHarnessBridge {
   private readonly provider: ModelProvider;
+  private readonly providers: ModelProvider[];
   private readonly holderId: string;
   private runtime: HarnessRuntime | null = null;
   private runtimeWorkspace: string | null = null;
@@ -45,6 +48,7 @@ export class InProcessHarnessBridge {
 
   constructor(options: HarnessBridgeOptions) {
     this.provider = options.provider;
+    this.providers = options.providers ?? [];
     this.holderId = options.holderId ?? "editor-bridge";
     this.prices = options.prices;
     this.repositoryRevision = options.repositoryRevision;
@@ -91,6 +95,8 @@ export class InProcessHarnessBridge {
         return this.resumeRun(req.requestId, req.params);
       case "export_handoff":
         return this.exportHandoff(req.requestId, req.params);
+      case "switch_provider":
+        return this.switchProvider(req.requestId, req.params);
       default: {
         const _exhaustive: never = req;
         void _exhaustive;
@@ -148,6 +154,7 @@ export class InProcessHarnessBridge {
       workspaceRoot: validated.workspaceRoot,
       dataDir: validated.dataDir,
       provider: this.provider,
+      providers: this.providers,
       holderId: this.holderId,
       prices: this.prices,
       repositoryRevision: this.repositoryRevision,
@@ -315,6 +322,7 @@ export class InProcessHarnessBridge {
       workspaceRoot,
       dataDir,
       provider: this.provider,
+      providers: this.providers,
       holderId: this.holderId,
       prices: this.prices,
       repositoryRevision: this.repositoryRevision,
@@ -360,6 +368,41 @@ export class InProcessHarnessBridge {
     }
     this.activeRunId = result.run?.id ?? params.runId;
     return this.ok(requestId, { run: result.run, summary: result.summary });
+  }
+
+  /**
+   * The runtime that streams the next turn resolves its provider from the
+   * run's persisted providerId, so after a committed switch resume_run uses
+   * the new provider (P0). The bridge request id is the idempotency key.
+   */
+  private async switchProvider(
+    requestId: string,
+    params: { runId: string; workspaceRoot: string; dataDir: string; providerId: string; modelId: string },
+  ): Promise<BridgeResponse> {
+    if (this.runPromise && this.activeRunId === params.runId) {
+      return this.fail(requestId, "run_already_active", `Run ${params.runId} is still active; pause it first`);
+    }
+    let runtime: HarnessRuntime;
+    try {
+      runtime = this.attachRuntime(params.workspaceRoot, params.dataDir);
+    } catch (err) {
+      return this.fail(requestId, "run_already_active", err instanceof Error ? err.message : String(err));
+    }
+    const result = await runtime.switchProvider(params.runId, {
+      requestId,
+      toProviderId: params.providerId,
+      toModelId: params.modelId,
+    });
+    if (!result.ok) {
+      const code: BridgeErrorCode =
+        result.reason === "unknown_run"
+          ? "run_not_found"
+          : result.reason === "lease_held"
+            ? "lease_held"
+            : "switch_refused";
+      return this.fail(requestId, code, `${result.reason}: ${result.detail}`, { run: result.run });
+    }
+    return this.ok(requestId, { run: result.run });
   }
 
   private async exportHandoff(

@@ -89,6 +89,7 @@ export const EventTypeSchema = z.enum([
   "budget_reconciled",
   "budget_limit_raised",
   "run_interrupted",
+  "provider_switched",
 ]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 
