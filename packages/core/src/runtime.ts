@@ -38,7 +38,8 @@ import {
   settleDanglingReservation,
 } from "./budget.js";
 import { buildHandoff } from "./handoff.js";
-import type { Handoff } from "@kur3/contracts";
+import type { Handoff, PortableCheckpoint } from "@kur3/contracts";
+import { switchProvider as planProviderSwitch, type SwitchRefusal } from "./provider-switch.js";
 import {
   reconcileToolCall,
   type RecoveryStep,
@@ -47,7 +48,13 @@ import {
 export interface RuntimeOptions {
   workspaceRoot: string;
   dataDir: string;
+  /** Default provider for new runs. */
   provider: ModelProvider;
+  /**
+   * Additional providers a run may be switched to. Each turn streams through
+   * the provider whose id matches the run's persisted `providerId`.
+   */
+  providers?: ModelProvider[];
   holderId?: string;
   /** Pricing source used to reserve and reconcile. Omit prices to force "unknown". */
   prices?: ModelPriceTable;
@@ -65,6 +72,31 @@ export interface RunResult {
   verifications: Verification[];
   summary: string;
 }
+
+export interface SwitchProviderInput {
+  /** Idempotency key: repeating a committed request id is a no-op. */
+  requestId: string;
+  toProviderId: string;
+  toModelId: string;
+  /** Test seam: runs after validation, under the lease, before the commit. */
+  beforeCommit?: () => void | Promise<void>;
+}
+
+export type SwitchProviderResult =
+  | {
+      ok: true;
+      /** True when this request id was already committed (no change made). */
+      idempotent: boolean;
+      run: Run;
+      portable?: PortableCheckpoint;
+      messages?: ProviderMessage[];
+    }
+  | {
+      ok: false;
+      reason: SwitchRefusal | "lease_held" | "unknown_run" | "unknown_provider" | "stale_run" | "request_id_conflict";
+      detail: string;
+      run?: Run;
+    };
 
 export interface ResumeResult {
   ok: boolean;
@@ -100,7 +132,9 @@ export class HarnessRuntime {
   private readonly store: RunStore;
   private readonly worker: FileWorker;
   private readonly commandWorker: CommandWorker;
+  /** Default provider for new runs; turns resolve by the run's providerId. */
   private readonly provider: ModelProvider;
+  private readonly providers = new Map<string, ModelProvider>();
   private readonly holderId: string;
   private readonly prices?: ModelPriceTable;
   private readonly repositoryRevision?: string;
@@ -117,6 +151,10 @@ export class HarnessRuntime {
       workspaceRoot: options.workspaceRoot,
     });
     this.provider = options.provider;
+    this.providers.set(options.provider.id, options.provider);
+    for (const p of options.providers ?? []) {
+      if (!this.providers.has(p.id)) this.providers.set(p.id, p);
+    }
     this.holderId = options.holderId ?? randomUUID();
     this.prices = options.prices;
     this.repositoryRevision = options.repositoryRevision;
@@ -124,6 +162,109 @@ export class HarnessRuntime {
 
   getStore(): RunStore {
     return this.store;
+  }
+
+  /** Provider a run's next turn will stream through (by persisted providerId). */
+  providerFor(run: Pick<Run, "providerId">): ModelProvider | undefined {
+    return this.providers.get(run.providerId);
+  }
+
+  /**
+   * Switch a run to another registered provider at a verified clean boundary
+   * (W10, PR #7 review P0/P1-1/P1-4):
+   * - idempotent by `requestId` (a committed id returns `idempotent: true`);
+   * - holds a per-request run lease so two switches (or a switch and a live
+   *   drive) cannot race — the loser gets `lease_held`;
+   * - validates via the pure planner (sequence/state/task/ledger guards and
+   *   the small verified handoff);
+   * - persists run + checkpoint + `provider_switched` event + idempotency
+   *   record in ONE atomic write, re-checking the event sequence on disk.
+   * The next turn (resumeRun) streams through the new provider.
+   */
+  async switchProvider(runId: string, input: SwitchProviderInput): Promise<SwitchProviderResult> {
+    this.store.reload();
+    const already = this.store.getProviderSwitch(input.requestId);
+    if (already) return this.idempotentSwitch(runId, input, already);
+
+    const holder = `${this.holderId}:switch:${input.requestId}`;
+    const lease = this.store.acquireLease(runId, holder);
+    if (!lease.ok) {
+      const unknown = lease.reason.startsWith("Unknown run");
+      return {
+        ok: false,
+        reason: unknown ? "unknown_run" : "lease_held",
+        detail: lease.reason,
+        run: this.store.getRun(runId),
+      };
+    }
+    try {
+      const raced = this.store.getProviderSwitch(input.requestId);
+      if (raced) return this.idempotentSwitch(runId, input, raced);
+      const run = this.store.getRun(runId)!;
+      const to = this.providers.get(input.toProviderId);
+      if (!to) {
+        return { ok: false, reason: "unknown_provider", detail: `Provider ${input.toProviderId} is not registered.`, run };
+      }
+      const plan = planProviderSwitch({
+        run,
+        checkpoint: this.store.getCheckpoint(runId),
+        events: this.store.listEvents(runId),
+        toolCalls: this.store.listToolCalls(runId),
+        to,
+        toModelId: input.toModelId,
+        repositoryRevision: this.repositoryRevision,
+      });
+      if (!plan.ok) return { ok: false, reason: plan.reason, detail: plan.detail, run };
+      if (input.beforeCommit) await input.beforeCommit();
+      const committed = this.store.commitProviderSwitch({
+        requestId: input.requestId,
+        runId,
+        expectedLastEventSequence: run.lastEventSequence,
+        runPatch: {
+          providerId: plan.run.providerId,
+          modelId: plan.run.modelId,
+          ...(plan.run.budget ? { budget: plan.run.budget } : {}),
+        },
+        checkpoint: {
+          runId,
+          taskFacts: plan.checkpoint.taskFacts,
+          pendingCalls: [],
+          workspaceRevision: plan.checkpoint.workspaceRevision,
+          savedAt: plan.checkpoint.savedAt,
+        },
+        handoffDigest: plan.portable.handoffDigest,
+        eventPayload: { dropped: plan.portable.dropped },
+      });
+      if (!committed.ok) {
+        return { ok: false, reason: committed.reason, detail: committed.detail, run: this.store.getRun(runId) };
+      }
+      return {
+        ok: true,
+        idempotent: committed.duplicate,
+        run: committed.run,
+        portable: plan.portable,
+        messages: plan.messages,
+      };
+    } finally {
+      this.store.releaseLease(runId, holder);
+    }
+  }
+
+  private idempotentSwitch(
+    runId: string,
+    input: SwitchProviderInput,
+    record: { runId: string; to: string },
+  ): SwitchProviderResult {
+    const to = `${input.toProviderId}/${input.toModelId}`;
+    if (record.runId !== runId || record.to !== to) {
+      return {
+        ok: false,
+        reason: "request_id_conflict",
+        detail: `Switch request ${input.requestId} was already used for ${record.runId} -> ${record.to}.`,
+        run: this.store.getRun(runId),
+      };
+    }
+    return { ok: true, idempotent: true, run: this.store.getRun(runId)! };
   }
 
   /** Active run id for bridge/UI; set as soon as startRun creates the record. */
@@ -199,6 +340,7 @@ export class HarnessRuntime {
     for (const v of verifications) {
       this.store.appendEvent(runId, "verification_recorded", { ...v });
     }
+    this.sealCheckpoint(runId, input.task);
 
     const finalRun = this.store.getRun(runId)!;
     return { run: finalRun, verifications, summary: summary.trim() };
@@ -232,6 +374,8 @@ export class HarnessRuntime {
         };
       }
       this.currentRunId = runId;
+      // An explicit resume supersedes an earlier pause request.
+      this.pauseRequested = false;
       const resumable =
         run.state === "running" ||
         run.state === "paused" ||
@@ -266,8 +410,8 @@ export class HarnessRuntime {
       run = this.store.getRun(runId)!;
 
       if (run.state === "running") {
-        this.checkpoint(runId, task ?? this.taskFromCheckpoint(runId), []);
         this.store.updateRunState(runId, "paused");
+        this.checkpoint(runId, task ?? this.taskFromCheckpoint(runId), []);
         run = this.store.getRun(runId)!;
       }
 
@@ -318,6 +462,7 @@ export class HarnessRuntime {
       for (const v of verifications) {
         this.store.appendEvent(runId, "verification_recorded", { ...v });
       }
+      this.sealCheckpoint(runId, resumeTask);
       return {
         ok: true,
         run: this.store.getRun(runId),
@@ -412,9 +557,10 @@ export class HarnessRuntime {
         break;
       }
       if (this.pauseRequested) {
-        this.checkpoint(runId, task, [], messages);
         this.store.updateRunState(runId, "paused");
         this.store.appendEvent(runId, "run_state_changed", { state: "paused" });
+        // Checkpoint last so it covers the pause event and the paused state.
+        this.checkpoint(runId, task, [], messages);
         break;
       }
       if (Date.now() - startedAt > limits.maxDurationMs) {
@@ -423,6 +569,18 @@ export class HarnessRuntime {
           code: "timeout",
           message: "Run exceeded maxDurationMs",
         });
+        break;
+      }
+
+      const provider = this.providerFor(run);
+      if (!provider) {
+        this.store.updateRunState(runId, "failed");
+        this.store.appendEvent(runId, "error", {
+          code: "provider_unavailable",
+          message: `No registered provider for ${run.providerId}`,
+        });
+        this.store.appendEvent(runId, "run_state_changed", { state: "failed" });
+        this.checkpoint(runId, task, [], messages);
         break;
       }
 
@@ -436,6 +594,9 @@ export class HarnessRuntime {
         input: Record<string, unknown>;
       }> = [];
       let lastUsage: { inputTokens?: number; outputTokens?: number } | undefined;
+      let assistantText = "";
+      /** First error in this turn. Any error invalidates the whole turn. */
+      let turnError: { code: string; message: string } | undefined;
       let settled = false;
       const settle = () => {
         if (settled) return;
@@ -447,7 +608,7 @@ export class HarnessRuntime {
       };
 
       try {
-        for await (const ev of this.provider.stream(
+        for await (const ev of provider.stream(
           {
             modelId: run.modelId,
             messages,
@@ -461,13 +622,15 @@ export class HarnessRuntime {
         )) {
           if (ev.type === "text_delta") {
             summary += ev.text;
+            assistantText += ev.text;
             this.store.appendEvent(runId, "model_text_delta", { text: ev.text });
           } else if (ev.type === "tool_request") {
             if (!ev.name || typeof ev.input !== "object" || ev.input === null) {
               this.store.appendEvent(runId, "error", {
                 code: "malformed_tool",
-                message: "Incomplete tool request ignored",
+                message: "Incomplete tool request; turn invalidated",
               });
+              turnError ??= { code: "malformed_tool", message: "Incomplete tool request" };
               continue;
             }
             toolReqs.push({
@@ -495,6 +658,7 @@ export class HarnessRuntime {
               code: ev.code,
               message: ev.message,
             });
+            turnError ??= { code: ev.code, message: ev.message };
           } else if (ev.type === "completed") {
             this.store.appendEvent(runId, "model_completed", {
               finishReason: ev.finishReason,
@@ -506,6 +670,32 @@ export class HarnessRuntime {
       }
 
       if (this.store.getRun(runId)?.state === "budget_exhausted") break;
+
+      if (this.cancelRequested || this.abort.signal.aborted) {
+        const current = this.store.getRun(runId);
+        if (current?.state === "running") {
+          this.store.updateRunState(runId, "canceled");
+          this.store.appendEvent(runId, "run_state_changed", { state: "canceled" });
+        }
+        this.checkpoint(runId, task, [], messages);
+        break;
+      }
+
+      // P1-5: a provider error (or a contract-violating tool request) ends the
+      // run as failed — never completed — and no tool from the turn runs.
+      if (turnError) {
+        const current = this.store.getRun(runId);
+        if (current?.state === "running") {
+          this.store.updateRunState(runId, "failed");
+          this.store.appendEvent(runId, "run_state_changed", {
+            state: "failed",
+            reason: turnError.code,
+            droppedToolRequests: toolReqs.length,
+          });
+        }
+        this.checkpoint(runId, task, [], messages);
+        break;
+      }
 
       if (toolReqs.length === 0) {
         if (this.cancelRequested || this.abort.signal.aborted) {
@@ -570,7 +760,11 @@ export class HarnessRuntime {
         const failKey = `deny:${req.name}`;
         identicalFailures = failKey === lastFailureKey ? identicalFailures + 1 : 1;
         lastFailureKey = failKey;
-        messages.push({ role: "assistant", content: `Requested tool ${req.name}` });
+        messages.push({
+          role: "assistant",
+          content: assistantText,
+          toolCalls: [{ id: req.callId, name: req.name, input: req.input }],
+        });
         messages.push({
           role: "tool",
           name: req.name,
@@ -688,7 +882,11 @@ export class HarnessRuntime {
         result,
       });
 
-      messages.push({ role: "assistant", content: `Tool call ${req.name}` });
+      messages.push({
+        role: "assistant",
+        content: assistantText,
+        toolCalls: [{ id: req.callId, name: req.name, input: req.input }],
+      });
       messages.push({
         role: "tool",
         name: req.name,
@@ -874,11 +1072,23 @@ export class HarnessRuntime {
       ) {
         return undefined;
       }
+      const toolCalls = Array.isArray(rec.toolCalls)
+        ? rec.toolCalls.filter(
+            (c): c is { id: string; name: string; input: Record<string, unknown> } =>
+              !!c &&
+              typeof c === "object" &&
+              typeof (c as { id?: unknown }).id === "string" &&
+              typeof (c as { name?: unknown }).name === "string" &&
+              !!(c as { input?: unknown }).input &&
+              typeof (c as { input?: unknown }).input === "object",
+          )
+        : undefined;
       messages.push({
         role: rec.role,
         content: rec.content,
         name: typeof rec.name === "string" ? rec.name : undefined,
         toolCallId: typeof rec.toolCallId === "string" ? rec.toolCallId : undefined,
+        ...(toolCalls?.length ? { toolCalls } : {}),
       });
     }
     return messages;
@@ -919,10 +1129,8 @@ export class HarnessRuntime {
     const previous = this.store.getCheckpoint(runId)?.taskFacts ?? {};
     const startedAtMs =
       typeof previous.startedAtMs === "number" ? previous.startedAtMs : Date.now();
-    this.store.saveCheckpoint({
+    this.store.saveCheckpointWithEvent({
       runId,
-      runState: run.state,
-      lastEventSequence: run.lastEventSequence,
       taskFacts: {
         ...previous,
         taskId: task.id,
@@ -936,9 +1144,12 @@ export class HarnessRuntime {
       pendingCalls,
       savedAt: nowIso(),
     });
-    this.store.appendEvent(runId, "checkpoint_saved", {
-      sequence: run.lastEventSequence,
-    });
+  }
+
+  /** Re-save the checkpoint after trailing events (e.g. verifications). */
+  private sealCheckpoint(runId: string, task: Task): void {
+    const pending = this.store.getCheckpoint(runId)?.pendingCalls ?? [];
+    this.checkpoint(runId, task, pending);
   }
 
   private verify(task: Task): Verification[] {

@@ -1,7 +1,7 @@
 # KUR3 Harness — status
 
-Updated: 2026-10-02 (PT)  
-Base revision: branch `step3/w09-recovery-budget` from main `91f4c1057023a7d4555c6e492fbf8550c9f2718c` (includes merged W08 PR #5)  
+Updated: 2026-10-10 (PT)  
+Base revision: branch `step4/w10-second-provider` from main `a55ffd8` (includes merged W09 PR #6)  
 Guide: `KUR3-Harness-Master-Build-Guide.md` v0.2
 
 | Task | Status | Owner/session | Base revision | Evidence | Next action |
@@ -16,7 +16,7 @@ Guide: `KUR3-Harness-Master-Build-Guide.md` v0.2
 | W07 | ready for review | Grok Bot Step 2 Track B | main (merged) | Panel + stdio bridge + FakeProvider offline; ADR-0006; `demo:extension-offline` | Kevin reviews STEP2-W07 summary |
 | W08 | ready for review | Grok Bot Step 3 | step3/w08-isolated-worker | ADR-0007 bounded subprocess; CommandWorker + run_command; containment/cancel/timeout/env tests | Kevin reviews STEP3-W08 summary / isolation FLAGs |
 | W09 | ready for review | Grok Bot Step 3 | step3/w09-recovery-budget | ADR-0008; hash reconciliation; reservations; redacted export; crash/retry fixtures | Kevin reviews STEP3-W09 summary |
-| W10 | not started | Unassigned | — | None | Second provider + switching |
+| W10 | ready for review (review fixes in) | Grok Bot Step 4 | step4/w10-second-provider (PR #7) | ADR-0009 + amendment; AnthropicMessages mocked adapter; shared conformance + vendor fixtures; live runtime/bridge switch (atomic, leased, idempotent, small verified handoff); errors fail runs; structured tool_result | Kevin reviews; real-key live vendor run still open |
 | W11 | not started | Unassigned | — | None | Evals + release candidate |
 | W12 | not started | Unassigned | — | None | Optional Code OSS (owner select) |
 

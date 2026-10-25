@@ -6,3 +6,4 @@ export * from "./entities.js";
 export * from "./provider.js";
 export * from "./tools.js";
 export * from "./bridge.js";
+export * from "./portable-checkpoint.js";

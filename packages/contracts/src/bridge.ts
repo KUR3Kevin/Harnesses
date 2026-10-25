@@ -19,6 +19,7 @@ export const BridgeErrorSchema = z.object({
     "run_already_active",
     "lease_held",
     "no_active_run",
+    "switch_refused",
     "internal",
   ]),
   message: z.string(),
@@ -97,6 +98,23 @@ export const BridgeRequestSchema = z.discriminatedUnion("command", [
       runId: z.string().min(1),
       workspaceRoot: z.string().min(1),
       dataDir: z.string().min(1),
+    }),
+  }),
+  z.object({
+    protocolVersion: z.string(),
+    requestId: z.string().min(1),
+    /**
+     * W10: switch a paused run to another registered provider at a clean
+     * boundary. `requestId` is the idempotency key: retrying the same
+     * request is a no-op. The next resume_run streams through the new provider.
+     */
+    command: z.literal("switch_provider"),
+    params: z.object({
+      runId: z.string().min(1),
+      workspaceRoot: z.string().min(1),
+      dataDir: z.string().min(1),
+      providerId: z.string().min(1),
+      modelId: z.string().min(1),
     }),
   }),
 ]);

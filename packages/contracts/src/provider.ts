@@ -16,10 +16,16 @@ import { z } from "zod";
  * 2. Emit `tool_request` **only** when name + `input` are complete and
  *    `input` is a validated JSON object. Buffer partial tool-call JSON;
  *    never emit partial args; never treat raw text as an executable command.
+ *    Tool requests are emitted only after the vendor's end-of-message marker,
+ *    in vendor index order. If ANY tool call in the turn is malformed, the
+ *    whole turn is invalid: emit one `malformed_tool_args` error and zero
+ *    `tool_request` events (no partial execution of a mixed turn).
  * 3. Emit `usage` only from provider-reported totals (normalize field names;
  *    do **not** invent zeros when usage is unknown).
- * 4. End a successful turn with exactly one `completed` (unless a terminal
- *    `error` already ended the stream).
+ * 4. End a successful turn with exactly one `completed`. A turn that emits
+ *    an `error` is invalid: adapters MUST NOT emit `completed` after it, and
+ *    the runtime ends the run as `failed` (never `completed`) and executes
+ *    no tool request from that turn.
  * 5. On failure, emit `error` with a **canonical** `code` from
  *    `PROVIDER_ERROR_CODES` when applicable, and a redacted `message`
  *    (no API keys, bearer tokens, or Authorization headers).
@@ -93,11 +99,29 @@ export const StreamEventSchema = z.discriminatedUnion("type", [
 ]);
 export type StreamEvent = z.infer<typeof StreamEventSchema>;
 
+/** A tool call the assistant made in a prior turn (pairs with a `tool` message). */
+export const ProviderToolCallSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  input: z.record(z.unknown()),
+});
+export type ProviderToolCall = z.infer<typeof ProviderToolCallSchema>;
+
+/**
+ * Portable conversation message.
+ * - `assistant` messages MAY carry `toolCalls` (the structured tool requests
+ *   that turn made). Adapters render them as native tool-call blocks.
+ * - `tool` messages carry a tool result for `toolCallId`. Adapters MUST send
+ *   them as structured tool results (OpenAI `role:"tool"` + `tool_call_id`,
+ *   Anthropic `tool_result` + `tool_use_id`), never as plain user text, so tool
+ *   output cannot pose as user instructions.
+ */
 export const ProviderMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant", "tool"]),
   content: z.string(),
   toolCallId: z.string().optional(),
   name: z.string().optional(),
+  toolCalls: z.array(ProviderToolCallSchema).optional(),
 });
 export type ProviderMessage = z.infer<typeof ProviderMessageSchema>;
 
